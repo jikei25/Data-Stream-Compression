@@ -232,7 +232,7 @@ namespace MixPiece {
         if (group.blocks.size() > 1) {
             this->ABlocks.push_back(group);
         }
-        else {
+        else if (group.blocks.size() > 0) {
             this->r_blocks.push_back(Segment(
                 group.blocks[0].t, group.a_l, group.a_u, group.blocks[0].b));
         }
@@ -303,6 +303,7 @@ namespace MixPiece {
                 this->intervals.clear();
             }
         }                
+
     }
     // End: compression
 
