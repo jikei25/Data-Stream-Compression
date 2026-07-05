@@ -1,1 +1,0 @@
-dataset,algorithm,error bound/buffer size,compression ratio,mse,rmse,mae,snr,psnr,max_e,min_e,correlation,ssim,max_vsz,max_rss,c_time,c_avg_latency,c_max_latency,d_time,max_d_time
