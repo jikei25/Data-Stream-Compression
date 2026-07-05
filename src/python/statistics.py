@@ -25,20 +25,51 @@ def load(origin, approx):
     return np.array(origin_data)[:, 1], np.array(approx_data)[:, 1]
 
 
+def load_memory_baseline(file=".memory_baseline"):
+    if not os.path.exists(file):
+        return 0, 0
+
+    with open(file, 'r') as file:
+        line = file.readline().strip().split(',')
+        if len(line) < 2:
+            return 0, 0
+        return int(line[0]), int(line[1])
+
+
 def load_monitor(file):
-    max_vsz, max_rss = float("-inf"), float("-inf")
+    c_max_vsz, c_max_rss = float("-inf"), float("-inf")
+    d_max_vsz, d_max_rss = float("-inf"), float("-inf")
+    baseline_vsz, baseline_rss = load_memory_baseline()
     
     with open(file, 'r') as file:
         csvFile = csv.reader(file)
         next(csvFile, None)
         for line in csvFile:
+            if len(line) < 4:
+                continue
+
             c_vsz = int(line[2])
             c_rss = int(line[3])
+            phase = line[4] if len(line) > 4 else "compression"
 
-            max_vsz = max_vsz if max_vsz > c_vsz else c_vsz
-            max_rss = max_rss if max_rss > c_rss else c_rss
+            if phase == "compression":
+                c_max_vsz = c_max_vsz if c_max_vsz > c_vsz else c_vsz
+                c_max_rss = c_max_rss if c_max_rss > c_rss else c_rss
+            elif phase == "decompression":
+                d_max_vsz = d_max_vsz if d_max_vsz > c_vsz else c_vsz
+                d_max_rss = d_max_rss if d_max_rss > c_rss else c_rss
+
+    if c_max_vsz == float("-inf"):
+        c_max_vsz, c_max_rss = baseline_vsz, baseline_rss
+    if d_max_vsz == float("-inf"):
+        d_max_vsz, d_max_rss = baseline_vsz, baseline_rss
+
+    c_max_vsz = max(c_max_vsz - baseline_vsz, 0)
+    c_max_rss = max(c_max_rss - baseline_rss, 0)
+    d_max_vsz = max(d_max_vsz - baseline_vsz, 0)
+    d_max_rss = max(d_max_rss - baseline_rss, 0)
         
-    return max_vsz, max_rss
+    return c_max_vsz, c_max_rss, d_max_vsz, d_max_rss
 
 
 def rmse(origin_data, approx_data):
@@ -95,7 +126,7 @@ if __name__ == "__main__":
     MONITOR = ".mon"
 
     origin_data, approx_data = load(DATA, DECOMPRESS)
-    max_vsz, max_rss = load_monitor(MONITOR)
+    c_max_vsz, c_max_rss, d_max_vsz, d_max_rss = load_monitor(MONITOR)
     count_min = min(origin_data.shape[0], approx_data.shape[0])
     
     origin_data = origin_data[:count_min]
@@ -111,5 +142,7 @@ if __name__ == "__main__":
     print("Min_E:", mindiff(origin_data, approx_data))
     print("Correlation:", pearsoncorr(origin_data, approx_data))
     print("SSIM:", ssim(origin_data, approx_data))
-    print("max_vsz:", max_vsz/1024/1024)
-    print("max_rss:", max_rss/1024/1024)
+    print("c_max_vsz:", c_max_vsz/1024/1024)
+    print("c_max_rss:", c_max_rss/1024/1024)
+    print("d_max_vsz:", d_max_vsz/1024/1024)
+    print("d_max_rss:", d_max_rss/1024/1024)

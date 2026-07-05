@@ -8,23 +8,44 @@
 #include <thread>
 #include <sys/time.h>
 #include <sys/resource.h>
+#include <atomic>
+#include <utility>
 
 using namespace std::chrono;
 
 class Monitor {
     private:
+        enum Phase {
+            IDLE = 0,
+            COMPRESSION = 1,
+            DECOMPRESSION = 2
+        };
+
         bool flag;
         long page_size;
         std::thread task;
+        std::atomic<int> phase;
+
+        std::string phase_name() {
+            switch (this->phase.load()) {
+                case COMPRESSION:
+                    return "compression";
+                case DECOMPRESSION:
+                    return "decompression";
+                default:
+                    return "idle";
+            }
+        }
 
         Monitor() {
             this->flag = false;
             this->page_size = sysconf(_SC_PAGE_SIZE);
+            this->phase = IDLE;
         }
 
         void __monitor(std::string output) {
             std::fstream file(output, std::ios::out);
-            file << "user_cpu_time,system_cpu_time,vsz,rss\n";
+            file << "user_cpu_time,system_cpu_time,vsz,rss,phase\n";
 
             while (this->flag) {
                 // dont know why but monitoring cpu time with ruuage seem more accurate
@@ -44,7 +65,7 @@ class Monitor {
                 std::string utime = std::to_string(usage.ru_utime.tv_sec*1000000 + usage.ru_utime.tv_usec);
                 std::string stime = std::to_string(usage.ru_stime.tv_sec*1000000 + usage.ru_stime.tv_usec);
 
-                file << utime << "," << stime << "," << vsz << "," << rss + "\n";
+                file << utime << "," << stime << "," << vsz << "," << rss << "," << this->phase_name() << "\n";
             }
 
             file.close();
@@ -52,8 +73,35 @@ class Monitor {
     
     public:
         static Monitor instance;
+
+        static std::pair<long, long> getMemory() {
+            long page_size = sysconf(_SC_PAGE_SIZE);
+            std::string data;
+            std::ifstream ifs("/proc/self/stat", std::ios_base::in);
+
+            ifs >> data >> data >> data >> data >> data >> data >> data >> data >> data >> data >> data
+            >> data >> data >> data >> data >> data >> data >> data >> data >> data >> data >> data;
+
+            ifs >> data; long vsz = std::stol(data);
+            ifs >> data; long rss = std::stol(data) * page_size;
+
+            return std::make_pair(vsz, rss);
+        }
+
+        void setIdle() {
+            this->phase = IDLE;
+        }
+
+        void setCompression() {
+            this->phase = COMPRESSION;
+        }
+
+        void setDecompression() {
+            this->phase = DECOMPRESSION;
+        }
         
         void start(std::string output) {
+            this->setIdle();
             this->flag = true;
             this->task = std::thread(&Monitor::__monitor, this, output);
         }

@@ -38,6 +38,11 @@ int main(int argc, char** argv) {
     const string ALGO = argv[5];
 
     TimeSeries data_stream = loadTimeseries(INPUT);
+    std::pair<long, long> memory_baseline = Monitor::getMemory();
+    std::fstream memory_baseline_file(".memory_baseline", std::ios::out);
+    memory_baseline_file << memory_baseline.first << "," << memory_baseline.second << "\n";
+    memory_baseline_file.close();
+
     Monitor::instance.start(".mon");
     
     BaseDecompression* decompressor = nullptr;
@@ -152,13 +157,17 @@ int main(int argc, char** argv) {
         
         time_stream.push(high_resolution_clock::now());
         com_clock.tick();
+        Monitor::instance.setCompression();
         BinObj* obj = compressor->process(data);
+        Monitor::instance.setIdle();
         com_clock.tick();
 
         while (obj != nullptr) {
             high_resolution_clock::time_point curr_time = high_resolution_clock::now();
             decom_clock.start();
+            Monitor::instance.setDecompression();
             long length = decompressor->process(obj);
+            Monitor::instance.setIdle();
             long duration = decom_clock.stop();
             
             if (length > 0 && time_stream.size() > 0) {
@@ -179,11 +188,15 @@ int main(int argc, char** argv) {
     }
 
     // Finalizing
+    Monitor::instance.setCompression();
     BinObj* obj = compressor->complete();
+    Monitor::instance.setIdle();
     while (obj != nullptr) {
         high_resolution_clock::time_point curr_time = high_resolution_clock::now();
         decom_clock.start();
+        Monitor::instance.setDecompression();
         long length = decompressor->process(obj);
+        Monitor::instance.setIdle();
         long duration = decom_clock.stop();
 
         if (length > 0) {
@@ -199,7 +212,9 @@ int main(int argc, char** argv) {
         count += length;
         obj = (BinObj*) obj->getNext();
     }
+    Monitor::instance.setDecompression();
     decompressor->complete();
+    Monitor::instance.setIdle();
     data_stream.finalize();
 
     // Profiling time
