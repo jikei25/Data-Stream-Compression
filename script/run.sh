@@ -33,7 +33,7 @@ echo -e "\n-------------------------"
 echo "Start statisticizing..."
 python3 src/python/statistics.py $DATA $DECOMPRESS $COMPRESS > .statistic
 
-echo "Dataset,Algorithm,Error,Compression ratio,mse,rmse,mae,snr,psnr,max_e,min_e,c_max_vsz,c_max_rss,d_max_vsz,d_max_rss,c_time,c_avg_latency,c_max_latency,d_time,max_d_time" > out/experiments.csv
+echo "Dataset,Algorithm,Error,Compression ratio,mse,rmse,mae,snr,psnr,max_e,min_e,correlation,ssim,c_max_vsz,c_max_rss,d_max_vsz,d_max_rss,c_time,c_avg_latency,c_max_latency,d_time,max_d_time,c_energy,d_energy" > out/experiments.csv
 
 echo -n $DATA,$(echo $ALGO | awk -F " " '{print $1}'),$(echo $ALGO | awk -F " " '{print $2}') >> out/experiments.csv
 cat .statistic | while read line; do

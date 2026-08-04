@@ -159,6 +159,11 @@ class Clock {
             return this->_max_duration;
         }
 
+        // Total accumulated active time (ns) across every measured interval.
+        double getTotalDuration() {
+            return this->_avg_duration * this->_counter;
+        }
+
         long stop() {
             return duration_cast<nanoseconds>(high_resolution_clock::now() - this->_start_pivot).count();
         }

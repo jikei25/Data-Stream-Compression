@@ -119,6 +119,30 @@ Statistical output of each execution is appended to the ``experiments.csv`` file
 | ``c_max_latency`` | Maximum compression latency observed (ns). |
 | ``d_time`` | Average decompression time per data point (ns). |
 | ``max_d_latency`` | Maximum decompression latency observed (ns). |
+| ``c_energy`` | Estimated edge energy consumed during compression (mJ). |
+| ``d_energy`` | Estimated edge energy consumed during decompression (mJ). |
+
+### Edge Energy Estimation
+
+Edge energy consumption is one of the core comparison metrics. On a physical
+edge device it is obtained through power-rail monitoring; to keep the framework
+device-agnostic, it is estimated with the linear model
+
+```text
+E (mJ) = P_active (mW) * t_active (s)
+```
+
+where ``t_active`` is the CPU-bound active time already measured for each phase
+(compression / decompression) and ``P_active`` is the device's active power
+draw. ``P_active`` is a device property, configured once per host through the
+``EDGE_POWER_MW`` environment variable (milliwatts). When unset, it defaults to
+``1500`` mW (calibrated for an NVIDIA Jetson Nano core). Calibrate it to the
+target edge device for absolute figures; any consistent value is sufficient for
+relative cross-algorithm comparison.
+
+```bash
+$ EDGE_POWER_MW=2000 script/run.sh <CONFIG_FILE>
+```
 
 
 ## Algorithms
