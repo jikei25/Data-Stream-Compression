@@ -147,6 +147,7 @@ int main(int argc, char** argv) {
     long count = 0;
     long max_latency = -1e18;
     double sum_latency = 0;
+    double d_total_time = 0;
 
     Clock com_clock;
     Clock decom_clock;
@@ -169,7 +170,8 @@ int main(int argc, char** argv) {
             long length = decompressor->process(obj);
             Monitor::instance.setIdle();
             long duration = decom_clock.stop();
-            
+            d_total_time += duration;
+
             if (length > 0 && time_stream.size() > 0) {
                 decom_times.push_back((float) duration / length);
                 for (int i=0; i<length; i++) {
@@ -198,6 +200,7 @@ int main(int argc, char** argv) {
         long length = decompressor->process(obj);
         Monitor::instance.setIdle();
         long duration = decom_clock.stop();
+        d_total_time += duration;
 
         if (length > 0) {
             decom_times.push_back((float) duration / length);
@@ -217,12 +220,23 @@ int main(int argc, char** argv) {
     Monitor::instance.setIdle();
     data_stream.finalize();
 
+    // Stop monitoring so the per-phase hardware-energy integral is final, then
+    // read the real edge energy (mJ) the monitor attributed to each phase. When
+    // no hardware energy source exists on this host these are 0 (never "N/A"),
+    // keeping the downstream CSV columns aligned.
+    Monitor::instance.stop();
+    double c_energy = Monitor::instance.getCompressionEnergy();
+    double d_energy = Monitor::instance.getDecompressionEnergy();
+
     // Profiling time
-    std::cout << std::fixed << "Average compress time (ns): " << com_clock.getAvgDuration() << "\n"; 
-    std::cout << std::fixed << "Average latency (ns): " << (sum_latency / count) << "\n"; 
+    std::cout << std::fixed << "Average compress time (ns): " << com_clock.getAvgDuration() << "\n";
+    std::cout << std::fixed << "Average latency (ns): " << (sum_latency / count) << "\n";
     std::cout << std::fixed << "Max latency (ns): " << max_latency << "\n";
-    std::cout << std::fixed << "Average decompress time (ns): " << ((float) std::accumulate(decom_times.begin(), decom_times.end(), 0.0) / decom_times.size()) << "\n"; 
-    std::cout << std::fixed << "Max decompress time (ns): " << (*std::max_element(decom_times.begin(), decom_times.end())) << "\n"; 
+    std::cout << std::fixed << "Average decompress time (ns): " << ((float) std::accumulate(decom_times.begin(), decom_times.end(), 0.0) / decom_times.size()) << "\n";
+    std::cout << std::fixed << "Max decompress time (ns): " << (*std::max_element(decom_times.begin(), decom_times.end())) << "\n";
+    std::cout << "Energy meter: " << Monitor::instance.energySource() << "\n";
+    std::cout << std::fixed << "Compress energy (mJ): " << c_energy << "\n";
+    std::cout << std::fixed << "Decompress energy (mJ): " << d_energy << "\n";
 
     IterIO timeFile(".time", false);
     timeFile.write("Average compress time (ns): " + std::to_string(com_clock.getAvgDuration()));
@@ -230,11 +244,12 @@ int main(int argc, char** argv) {
     timeFile.write("Max latency (ns): " + std::to_string(max_latency));
     timeFile.write("Average decompress time (ns): " + std::to_string(((float) std::accumulate(decom_times.begin(), decom_times.end(), 0.0) / decom_times.size())));
     timeFile.write("Max decompress time (ns): " + std::to_string(*std::max_element(decom_times.begin(), decom_times.end())));
+    timeFile.write("Compress energy (mJ): " + std::to_string(c_energy));
+    timeFile.write("Decompress energy (mJ): " + std::to_string(d_energy));
     timeFile.close();
-    
+
     delete compressor;
     delete decompressor;
-    Monitor::instance.stop();
 
     return 0;
 }

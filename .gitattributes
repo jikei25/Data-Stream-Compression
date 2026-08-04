@@ -1,0 +1,7 @@
+# Keep shell scripts LF so they run under Linux/WSL even when the repo is
+# checked out on Windows (overrides core.autocrlf=true).
+*.sh text eol=lf
+
+# Python is invoked via `python3 ...` (no shebang dependency), but LF keeps
+# diffs clean across platforms.
+*.py text eol=lf

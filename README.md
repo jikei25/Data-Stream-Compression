@@ -119,6 +119,122 @@ Statistical output of each execution is appended to the ``experiments.csv`` file
 | ``c_max_latency`` | Maximum compression latency observed (ns). |
 | ``d_time`` | Average decompression time per data point (ns). |
 | ``max_d_latency`` | Maximum decompression latency observed (ns). |
+| ``c_energy`` | Edge energy consumed during compression (mJ), measured from hardware telemetry. |
+| ``d_energy`` | Edge energy consumed during decompression (mJ), measured from hardware telemetry. |
+
+### Edge Energy Measurement
+
+Energy is read from real hardware telemetry; the framework does **not** accept a
+configured wattage or use ``power × elapsed time`` as a model. The monitoring
+thread samples the hardware continuously (every few milliseconds) and attributes
+the energy drawn over each interval to the phase that is active at that moment
+(compression / decompression / idle), then reports the **dynamic** energy — the
+draw above the measured idle baseline — for each phase. This mirrors the
+per-rail, idle-subtracted measurement used on the Jetson edge node in the
+companion ``iot-streaming`` project.
+
+Supported sources, in order of preference:
+
+- **Linux RAPL package-energy counter** (x86), auto-detected at
+  ``/sys/class/powercap/.../energy_uj`` (cumulative microjoules).
+- **An instantaneous power rail** (e.g. Jetson INA3221), configured via one of
+  the environment variables below and integrated over time.
+
+The run prints the source it used, e.g. ``Energy meter: Linux RAPL package
+energy counter``. If no source is available (Windows, and typically WSL2), it
+prints ``unavailable`` and both energy fields are ``0`` — never a non-numeric
+placeholder — so the ``experiments.csv`` columns stay aligned. Which host can
+measure real energy:
+
+| Host | Real energy? | How |
+|:--|:--|:--|
+| Jetson Nano | ✅ | INA3221 rail, set an ``ENERGY_*`` variable (below) |
+| x86 Linux, bare-metal (Intel/AMD) | ✅ | RAPL, auto-detected (usually needs ``sudo``) |
+| WSL2 / Windows | ❌ | no hardware source; energy = 0 |
+
+#### How it works
+
+The same background thread that samples memory (``lib/system/monitor.hpp``) also
+drives the energy measurement, so there is one sampler for all metrics:
+
+1. **Idle baseline.** When monitoring starts, the sampler first observes the
+   hardware for a short window (~200 ms) while the device is idle, before the
+   workload begins.
+2. **Continuous sampling.** It then wakes every ~5 ms and takes a hardware
+   snapshot. The energy drawn *since the previous snapshot* is either a
+   wrap-corrected RAPL counter difference (µJ → mJ) or, for a power rail, the
+   trapezoidal integral ``(P_prev + P_curr) / 2 × Δt``. No fixed wattage is
+   assumed — every value comes from the device.
+3. **Phase attribution.** The main loop tags the current activity with an atomic
+   flag — ``compression`` while the compressor runs, ``decompression`` while the
+   decompressor runs, ``idle`` otherwise. Each interval's energy and duration are
+   added to the bucket of whichever phase is active at that sample.
+4. **Idle subtraction.** From the idle bucket the sampler derives an average idle
+   power ``P_idle = E_idle / t_idle``. The reported per-phase energy is the
+   **dynamic** (above-idle) part:
+
+   ```text
+   c_energy = max(0,  E_compression   − P_idle × t_compression)
+   d_energy = max(0,  E_decompression − P_idle × t_decompression)
+   ```
+
+   Subtracting idle removes the device's constant baseline (and the sampler's own
+   overhead, since that is present in every phase), leaving the energy actually
+   attributable to the algorithm — the same idle-subtracted definition used on
+   the Jetson in ``iot-streaming``.
+
+Because attribution is statistical (thousands of 5 ms samples over a run), it
+needs no per-operation instrumentation and adds negligible, constant overhead
+regardless of how many data points the stream contains.
+
+#### Run on Jetson Nano (real measurement)
+
+1. Locate the INA3221 rail in sysfs. Prefer the **total input** rail (labelled
+   like ``POM_5V_IN`` / ``VDD_IN``), not a CPU/GPU sub-rail:
+
+   ```bash
+   # List hwmon rails and their labels to find the right index.
+   $ grep -H . /sys/class/hwmon/hwmon*/in*_label /sys/class/hwmon/hwmon*/curr*_label 2>/dev/null
+   ```
+
+2. Run, pointing a variable at that rail. Use the power file if present,
+   otherwise the voltage + current pair:
+
+   ```bash
+   # Rail that already reports power (microwatts):
+   $ ENERGY_POWER_UW_PATH=/sys/class/hwmon/hwmon0/power1_input \
+     script/run.sh conf/swing-filter.json
+
+   # Rail that reports voltage (mV) and current (mA) separately:
+   $ ENERGY_VOLTAGE_MV_PATH=/sys/class/hwmon/hwmon0/in1_input \
+     ENERGY_CURRENT_MA_PATH=/sys/class/hwmon/hwmon0/curr1_input \
+     script/run.sh conf/swing-filter.json
+   ```
+
+#### Run on x86 Linux (real measurement)
+
+Nothing to configure — RAPL is auto-detected; just grant access:
+
+```bash
+$ sudo script/run.sh conf/swing-filter.json
+```
+
+#### Test without hardware (simulated rail)
+
+To verify the pipeline and the ``c_energy`` / ``d_energy`` columns on a machine
+with no energy source (e.g. WSL2), point ``ENERGY_POWER_UW_PATH`` at a plain
+file that holds a power value in microwatts. The meter reads it exactly like a
+sensor. A background writer can vary it so the dynamic energy comes out non-zero:
+
+```bash
+$ echo 1000000 > /tmp/fake_power_uw            # 1 W idle baseline
+$ ( sleep 1; echo 5000000 > /tmp/fake_power_uw # 5 W during the run
+    sleep 3; echo 1000000 > /tmp/fake_power_uw ) &
+$ ENERGY_POWER_UW_PATH=/tmp/fake_power_uw script/run.sh conf/swing-filter.json
+```
+
+This exercises the full sampling → integration → idle-subtraction path; it is a
+plumbing check, not a real energy figure.
 
 
 ## Algorithms
@@ -166,4 +282,4 @@ This family compresses each individual data point by reducing the number of bits
 
 For questions, issues, or further information, please contact:
 
-- **Huan** — huan@hcmut.edu.vn  
+- **Huan** — huan@hcmut.edu.vn

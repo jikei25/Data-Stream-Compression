@@ -33,7 +33,7 @@ echo -e "\n-------------------------"
 echo "Start statisticizing..."
 python3 src/python/statistics.py $DATA $DECOMPRESS $COMPRESS > .statistic
 
-echo "Dataset,Algorithm,Error,Compression ratio,mse,rmse,mae,snr,psnr,max_e,min_e,c_max_vsz,c_max_rss,d_max_vsz,d_max_rss,c_time,c_avg_latency,c_max_latency,d_time,max_d_time" > out/experiments.csv
+echo "Dataset,Algorithm,Error,Compression ratio,mse,rmse,mae,snr,psnr,max_e,min_e,correlation,ssim,c_max_vsz,c_max_rss,d_max_vsz,d_max_rss,c_time,c_avg_latency,c_max_latency,d_time,max_d_time,c_energy,d_energy" > out/experiments.csv
 
 echo -n $DATA,$(echo $ALGO | awk -F " " '{print $1}'),$(echo $ALGO | awk -F " " '{print $2}') >> out/experiments.csv
 cat .statistic | while read line; do
@@ -41,7 +41,7 @@ cat .statistic | while read line; do
     echo -n ,$(echo $line | awk -F ":" '{print $2}' | xargs) >> out/experiments.csv 
 done
 
-echo ,$(cat .time | grep -oE '[0-9]+\.[0-9]+|[0-9]+' | paste -sd, -) >> out/experiments.csv
+awk -F ': ' '{ printf "%s%s", NR == 1 ? "" : ",", $2 } END { printf "\n" }' .time >> out/experiments.csv
 rm -f .statistic .mon .time .temp .memory_baseline
 
 exit 0
