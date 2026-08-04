@@ -41,7 +41,7 @@ cat .statistic | while read line; do
     echo -n ,$(echo $line | awk -F ":" '{print $2}' | xargs) >> out/experiments.csv 
 done
 
-echo ,$(cat .time | grep -oE '[0-9]+\.[0-9]+|[0-9]+' | paste -sd, -) >> out/experiments.csv
+awk -F ': ' '{ printf "%s%s", NR == 1 ? "" : ",", $2 } END { printf "\n" }' .time >> out/experiments.csv
 rm -f .statistic .mon .time .temp .memory_baseline
 
 exit 0
